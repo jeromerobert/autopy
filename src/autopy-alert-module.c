@@ -1,5 +1,6 @@
 #include "autopy-alert-module.h"
 #include "alert.h"
+#include <time.h>
 
 /* Syntax: alert(msg, title="AutoPy Alert", default_button="OK",
                  [cancel_button]) */
@@ -37,25 +38,30 @@ static PyObject *alert_alert(PyObject *self, PyObject *args, PyObject *kwds)
 {
 	char *msg = NULL, *title = "AutoPy Alert";
 	char *default_button = "OK", *cancel_button = NULL;
+        time_t timeout = -1;
 
 	static char *kwdlist[] = {"title", "msg", "default_button",
-	                          "cancel_button", NULL};
+	                          "cancel_button", "timeout", NULL};
 	int button;
 
-	if (!PyArg_ParseTupleAndKeywords(args, kwds, "s|szz", kwdlist,
+	if (!PyArg_ParseTupleAndKeywords(args, kwds, "s|szzk", kwdlist,
 	                                 &msg,
 	                                 &title,
 	                                 &default_button,
-	                                 &cancel_button)) {
+	                                 &cancel_button,
+                                         &timeout)) {
 		return NULL;
 	}
 
-	button = showAlert(title, msg, default_button, cancel_button);
+	button = showAlert(title, msg, default_button, cancel_button, timeout);
 	if (button == 0) {
 		Py_RETURN_TRUE;
 	} else if (button == 1) {
 		Py_RETURN_FALSE;
-	} else {
+	} else if (button == -2) {
+                Py_RETURN_NONE;
+        }
+        else {
 		PyErr_SetString(PyExc_OSError, "Could not display alert");
 		return NULL;
 	}

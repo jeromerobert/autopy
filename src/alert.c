@@ -11,6 +11,8 @@
 	#include <unistd.h> /* For fork() */
 	#include <sys/types.h> /* For pid_t */
 	#include "snprintf.h" /* For asprintf() */
+        #include <signal.h>
+        #include <errno.h>
 #endif
 
 #if defined(USE_X11)
@@ -18,7 +20,8 @@
 enum {
 	TASK_SUCCESS = 0,
 	FORK_FAILED = -1,
-	EXEC_FAILED = -2
+	EXEC_FAILED = -2,
+        EXEC_TIMEOUT = -3
 };
 
 /*
@@ -28,7 +31,7 @@ enum {
  * The return value and arguments are the same as those from to runTask()
  * (see below).
  */
-static int xmessage(char *argv[], int *exit_status);
+static int xmessage(char *argv[], time_t timeout, int *exit_status);
 
 #elif defined(IS_MACOSX)
 	#define CFStringCreateWithUTF8String(string) \
@@ -38,7 +41,7 @@ static int xmessage(char *argv[], int *exit_status);
 #endif
 
 int showAlert(const char *title, const char *msg, const char *defaultButton,
-              const char *cancelButton)
+              const char *cancelButton, const time_t timeout)
 {
 #if defined(IS_MACOSX)
 	CFStringRef alertHeader = CFStringCreateWithUTF8String(title);
@@ -85,13 +88,16 @@ int showAlert(const char *title, const char *msg, const char *defaultButton,
 	args[8] = defaultButton;
 	args[9] = NULL;
 
-	ret = xmessage((char **)args, &response);
+	ret = xmessage((char **)args, timeout, &response);
 	if (buttonList != NULL) {
 		free(buttonList);
 		buttonList = NULL;
 	}
 
 	if (ret != TASK_SUCCESS) {
+                if (ret == EXEC_TIMEOUT) {
+                    return -2;
+                }
 		if (ret == EXEC_FAILED) {
 			fputs("xmessage or equivalent not found.\n", stderr);
 		}
@@ -119,9 +125,9 @@ int showAlert(const char *title, const char *msg, const char *defaultButton,
  * Returns -1 if process could not be forked, -2 if the task could not be run,
  * or 0 if the task was ran successfully.
  */
-static int runTask(const char *taskname, char * const argv[], int *exit_status);
+static int runTask(const char *taskname, char * const argv[], time_t timeout, int *exit_status);
 
-static int xmessage(char *argv[], int *exit_status)
+static int xmessage(char *argv[], time_t timeout, int *exit_status)
 {
 	static const char * const MSG_PROGS[] = {"gmessage", "gxmessage",
 	                                         "kmessage", "xmessage"};
@@ -136,14 +142,14 @@ static int xmessage(char *argv[], int *exit_status)
 		assert(PREV_MSG_INDEX < MSG_PROGS_LEN);
 
 		prog = argv[0] = (char *)MSG_PROGS[PREV_MSG_INDEX];
-		ret = runTask(prog, argv, exit_status);
+		ret = runTask(prog, argv, timeout, exit_status);
 	} else {
 		/* Otherwise, try running each xmessage alternative until one works or
 		 * we run out of options. */
 		size_t i;
 		for (i = 0; i < MSG_PROGS_LEN; ++i) {
 			prog = argv[0] = (char *)MSG_PROGS[i];
-			ret = runTask(prog, argv, exit_status);
+			ret = runTask(prog, argv, timeout, exit_status);
 			if (ret != EXEC_FAILED) break;
 		}
 
@@ -153,10 +159,23 @@ static int xmessage(char *argv[], int *exit_status)
 	return ret;
 }
 
-static int runTask(const char *taskname, char * const argv[], int *exit_status)
+static int runTask(const char *taskname, char * const argv[], time_t timeout, int *exit_status)
 {
 	pid_t pid;
 	int status;
+        sigset_t mask;
+        sigset_t orig_mask;
+        struct timespec t;
+        bool timedout=false;
+
+        sigemptyset(&mask);
+        sigaddset(&mask, SIGCHLD);
+
+        if (sigprocmask(SIG_BLOCK, &mask, &orig_mask) < 0) {
+            perror("sigprocmask");
+            return FORK_FAILED;
+        }
+
 
 	switch (pid = fork()) {
 		case -1: /* Failed to fork */
@@ -166,14 +185,42 @@ static int runTask(const char *taskname, char * const argv[], int *exit_status)
 			execvp(taskname, argv);
 			exit(42); /* Failed to run task. */
 		default: /* Parent process */
-			wait(&status); /* Block execution until finished. */
+                    if (timeout > 0) {
+                        t.tv_sec = timeout;
+                        t.tv_nsec = 0;
+                        do {
+                            if (sigtimedwait(&mask,NULL,&t)<0) {
+                                if (errno == EINTR) {
+                                    /* Interrupted by a signal other than SIGCHLD. */
+                                    continue;
+                                }
+                                else if (errno == EAGAIN) {
+                                    /* Timeout occured, kill child*/
+                                    kill(pid,SIGKILL);
+                                    timedout=true;
+                                }
+                                else {
+                                    perror("sigtimedwait");
+                                    return FORK_FAILED;
+                                }
+                            }
+                            break;
+                        } while(1);
+                    }
+		    wait(&status); /* Block execution until finished. */
 
-			if (!WIFEXITED(status) || (status = WEXITSTATUS(status)) == 42) {
-				return EXEC_FAILED; /* Task failed to run. */
-			}
-			if (exit_status != NULL) *exit_status = status;
-			return TASK_SUCCESS; /* Success! */
-	}
+                    if (timedout) {
+                        return EXEC_TIMEOUT;
+                    }
+
+		    if (!WIFEXITED(status) || (status = WEXITSTATUS(status)) == 42) {
+			    return EXEC_FAILED; /* Task failed to run. */
+		    }
+		    if (exit_status != NULL) *exit_status = status;
+		    return TASK_SUCCESS; /* Success! */
+                    
+        }
+
 }
 
 #endif
