@@ -40,7 +40,7 @@ static PyObject *alert_alert(PyObject *self, PyObject *args, PyObject *kwds)
 	char *default_button = "OK", *cancel_button = NULL;
         time_t timeout = -1;
 
-	static char *kwdlist[] = {"title", "msg", "default_button",
+	static char *kwdlist[] = {"msg", "title", "default_button",
 	                          "cancel_button", "timeout", NULL};
 	int button;
 
