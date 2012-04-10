@@ -8,11 +8,11 @@
 	#include <stdio.h> /* For fputs() */
 	#include <stdlib.h> /* For exit() */
 	#include <sys/wait.h> /* For wait() */
+        #include <sys/stat.h>
+        #include <fcntl.h>
 	#include <unistd.h> /* For fork() */
 	#include <sys/types.h> /* For pid_t */
 	#include "snprintf.h" /* For asprintf() */
-        #include <signal.h>
-        #include <errno.h>
 #endif
 
 #if defined(USE_X11)
@@ -31,7 +31,7 @@ enum {
  * The return value and arguments are the same as those from to runTask()
  * (see below).
  */
-static int xmessage(char *argv[], time_t timeout, int *exit_status);
+static int xmessage(char *argv[], int *exit_status);
 
 #elif defined(IS_MACOSX)
 	#define CFStringCreateWithUTF8String(string) \
@@ -69,7 +69,9 @@ int showAlert(const char *title, const char *msg, const char *defaultButton,
 	return (responseFlags == kCFUserNotificationDefaultResponse) ? 0 : 1;
 #elif defined(USE_X11)
 	/* Note that args[0] is set by the xmessage() function. */
-	const char *args[10] = {NULL, msg, "-title", title, "-center"};
+        char t[10];
+        snprintf(t, 10, "%i", timeout);
+	const char *args[12] = {"timeout", t , NULL, msg, "-title", title, "-center"};
 	int response, ret;
 	char *buttonList = NULL; /* To be free()'d. */
 
@@ -82,13 +84,13 @@ int showAlert(const char *title, const char *msg, const char *defaultButton,
 	}
 
 	if (buttonList == NULL) return -1; /* asprintf() failed. */
-	args[5] = "-buttons";
-	args[6] = buttonList;
-	args[7] = "-default";
-	args[8] = defaultButton;
-	args[9] = NULL;
+	args[7] = "-buttons";
+	args[8] = buttonList;
+	args[9] = "-default";
+	args[10] = defaultButton;
+	args[11] = NULL;
 
-	ret = xmessage((char **)args, timeout, &response);
+	ret = xmessage((char **)args, &response);
 	if (buttonList != NULL) {
 		free(buttonList);
 		buttonList = NULL;
@@ -98,7 +100,7 @@ int showAlert(const char *title, const char *msg, const char *defaultButton,
                 if (ret == EXEC_TIMEOUT) {
                     return -2;
                 }
-		if (ret == EXEC_FAILED) {
+        	if (ret == EXEC_FAILED) {
 			fputs("xmessage or equivalent not found.\n", stderr);
 		}
 		return -1;
@@ -125,9 +127,9 @@ int showAlert(const char *title, const char *msg, const char *defaultButton,
  * Returns -1 if process could not be forked, -2 if the task could not be run,
  * or 0 if the task was ran successfully.
  */
-static int runTask(const char *taskname, char * const argv[], time_t timeout, int *exit_status);
+static int runTask(const char *taskname, char * const argv[], int *exit_status);
 
-static int xmessage(char *argv[], time_t timeout, int *exit_status)
+static int xmessage(char *argv[], int *exit_status)
 {
 	static const char * const MSG_PROGS[] = {"gmessage", "gxmessage",
 	                                         "kmessage", "xmessage"};
@@ -141,15 +143,15 @@ static int xmessage(char *argv[], time_t timeout, int *exit_status)
 	if (PREV_MSG_INDEX >= 0) {
 		assert(PREV_MSG_INDEX < MSG_PROGS_LEN);
 
-		prog = argv[0] = (char *)MSG_PROGS[PREV_MSG_INDEX];
-		ret = runTask(prog, argv, timeout, exit_status);
+		prog = argv[2] = (char *)MSG_PROGS[PREV_MSG_INDEX];
+		ret = runTask(prog, argv, exit_status);
 	} else {
 		/* Otherwise, try running each xmessage alternative until one works or
 		 * we run out of options. */
 		size_t i;
 		for (i = 0; i < MSG_PROGS_LEN; ++i) {
-			prog = argv[0] = (char *)MSG_PROGS[i];
-			ret = runTask(prog, argv, timeout, exit_status);
+			prog = argv[2] = (char *)MSG_PROGS[i];
+			ret = runTask(prog, argv, exit_status);
 			if (ret != EXEC_FAILED) break;
 		}
 
@@ -159,63 +161,38 @@ static int xmessage(char *argv[], time_t timeout, int *exit_status)
 	return ret;
 }
 
-static int runTask(const char *taskname, char * const argv[], time_t timeout, int *exit_status)
+static int runTask(const char *taskname, char * const argv[], int *exit_status)
 {
 	pid_t pid;
 	int status;
-        sigset_t mask;
-        sigset_t orig_mask;
-        struct timespec t;
-        bool timedout=false;
-
-        sigemptyset(&mask);
-        sigaddset(&mask, SIGCHLD);
-
-        if (sigprocmask(SIG_BLOCK, &mask, &orig_mask) < 0) {
-            perror("sigprocmask");
-            return FORK_FAILED;
-        }
-
+        int fd;
 
 	switch (pid = fork()) {
 		case -1: /* Failed to fork */
 			perror("fork");
 			return FORK_FAILED; /* Failed to fork. */
 		case 0: /* Child process */
-			execvp(taskname, argv);
+                        fd=open("/dev/null",O_WRONLY);
+                        if (fd==-1) {
+                            perror("/dev/null");
+                            exit(42);
+                        }
+                        dup2(fd,STDOUT_FILENO);
+                        dup2(fd,STDERR_FILENO);
+                        if (fd>2) close(fd); 
+                        execvp("timeout", argv);
 			exit(42); /* Failed to run task. */
 		default: /* Parent process */
-                    if (timeout > 0) {
-                        t.tv_sec = timeout;
-                        t.tv_nsec = 0;
-                        do {
-                            if (sigtimedwait(&mask,NULL,&t)<0) {
-                                if (errno == EINTR) {
-                                    /* Interrupted by a signal other than SIGCHLD. */
-                                    continue;
-                                }
-                                else if (errno == EAGAIN) {
-                                    /* Timeout occured, kill child*/
-                                    kill(pid,SIGKILL);
-                                    timedout=true;
-                                }
-                                else {
-                                    perror("sigtimedwait");
-                                    return FORK_FAILED;
-                                }
-                            }
-                            break;
-                        } while(1);
-                    }
+                    
 		    wait(&status); /* Block execution until finished. */
 
-                    if (timedout) {
+		    if (!WIFEXITED(status) || (status = WEXITSTATUS(status)) == 42 || status == 127) {
+			    return EXEC_FAILED; /* Task failed to run. */
+		    }
+                    if (status == 124) {
                         return EXEC_TIMEOUT;
                     }
 
-		    if (!WIFEXITED(status) || (status = WEXITSTATUS(status)) == 42) {
-			    return EXEC_FAILED; /* Task failed to run. */
-		    }
 		    if (exit_status != NULL) *exit_status = status;
 		    return TASK_SUCCESS; /* Success! */
                     

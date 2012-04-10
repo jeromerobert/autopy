@@ -38,7 +38,7 @@ static PyObject *alert_alert(PyObject *self, PyObject *args, PyObject *kwds)
 {
 	char *msg = NULL, *title = "AutoPy Alert";
 	char *default_button = "OK", *cancel_button = NULL;
-        time_t timeout = -1;
+        time_t timeout = 0;
 
 	static char *kwdlist[] = {"msg", "title", "default_button",
 	                          "cancel_button", "timeout", NULL};
