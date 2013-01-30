@@ -37,7 +37,7 @@ static void initBadShiftTable(UTHashTable *jumpTable, MMBitmapRef needle);
 
 /* Returns true if |needle| is found in |haystack| at |offset|. */
 static int needleAtOffset(MMBitmapRef needle, MMBitmapRef haystack,
-                          MMPoint offset, float tolerance);
+                          MMPoint offset, float tolerance, MMRGBHex ignoreNcolor, bool hasIgnoreNcolor);
 /* --- --- */
 
 /* An modification of the Boyer-Moore-Horspool Algorithm, only applied to
@@ -57,6 +57,8 @@ static int findBitmapInRectAt(MMBitmapRef needle,
                                 MMPoint *point,
                                 MMRect rect,
                                 float tolerance,
+                                MMRGBHex ignoreNcolor,
+                                bool hasIgnoreNcolor,
                                 MMPoint startPoint,
                                 UTHashTable *badShiftTable)
 {
@@ -85,7 +87,7 @@ static int findBitmapInRectAt(MMBitmapRef needle,
 
 		while (pointOffset.x <= scanWidth) {
 			/* Check offset in |haystack| for |needle|. */
-			if (needleAtOffset(needle, haystack, pointOffset, tolerance)) {
+			if (needleAtOffset(needle, haystack, pointOffset, tolerance, ignoreNcolor, hasIgnoreNcolor)) {
 				++pointOffset.x;
 				++pointOffset.y;
 				*point = pointOffset;
@@ -149,20 +151,22 @@ int findBitmapInRect(MMBitmapRef needle,
 		             MMBitmapRef haystack,
                      MMPoint *point,
                      MMRect rect,
-                     float tolerance)
+                     float tolerance,
+                     MMRGBHex ignoreNcolor,
+                     bool hasIgnoreNcolor)
 {
 	UTHashTable badShiftTable;
 	int ret;
 
 	initBadShiftTable(&badShiftTable, needle);
 	ret = findBitmapInRectAt(needle, haystack, point, rect,
-	                         tolerance, MMPointZero, &badShiftTable);
+	                         tolerance, ignoreNcolor, hasIgnoreNcolor, MMPointZero, &badShiftTable);
 	destroyBadShiftTable(&badShiftTable);
 	return ret;
 }
 
 MMPointArrayRef findAllBitmapInRect(MMBitmapRef needle, MMBitmapRef haystack,
-                                    MMRect rect, float tolerance)
+                                    MMRect rect, float tolerance, MMRGBHex ignoreNcolor, bool hasIgnoreNcolor)
 {
 	MMPointArrayRef pointArray = createMMPointArray(0);
 	MMPoint point = MMPointZero;
@@ -170,7 +174,7 @@ MMPointArrayRef findAllBitmapInRect(MMBitmapRef needle, MMBitmapRef haystack,
 
 	initBadShiftTable(&badShiftTable, needle);
 	while (findBitmapInRectAt(needle, haystack, &point, rect,
-	                          tolerance, point, &badShiftTable) == 0) {
+	                          tolerance, ignoreNcolor, hasIgnoreNcolor, point, &badShiftTable) == 0) {
 		const size_t scanWidth = (haystack->width - needle->width) + 1;
 		MMPointArrayAppendPoint(pointArray, point);
 		ITER_NEXT_POINT(point, scanWidth, 0);
@@ -181,7 +185,7 @@ MMPointArrayRef findAllBitmapInRect(MMBitmapRef needle, MMBitmapRef haystack,
 }
 
 size_t countOfBitmapInRect(MMBitmapRef needle, MMBitmapRef haystack,
-                           MMRect rect, float tolerance)
+                           MMRect rect, float tolerance, MMRGBHex ignoreNcolor, bool hasIgnoreNcolor)
 {
 	size_t count = 0;
 	MMPoint point = MMPointZero;
@@ -189,7 +193,7 @@ size_t countOfBitmapInRect(MMBitmapRef needle, MMBitmapRef haystack,
 
 	initBadShiftTable(&badShiftTable, needle);
 	while (findBitmapInRectAt(needle, haystack, &point, rect,
-	                          tolerance, point, &badShiftTable) == 0) {
+	                          tolerance, ignoreNcolor, hasIgnoreNcolor, point, &badShiftTable) == 0) {
 		const size_t scanWidth = (haystack->width - needle->width) + 1;
 		++count;
 		ITER_NEXT_POINT(point, scanWidth, 0);
@@ -227,7 +231,7 @@ static void initBadShiftTable(UTHashTable *jumpTable, MMBitmapRef needle)
 }
 
 static int needleAtOffset(MMBitmapRef needle, MMBitmapRef haystack,
-                          MMPoint offset, float tolerance)
+                          MMPoint offset, float tolerance, MMRGBHex ignoreNcolor, bool hasIgnoreNcolor)
 {
 	const MMPoint lastPoint = MMPointMake(needle->width - 1, needle->height - 1);
 	MMPoint scan;
@@ -239,7 +243,7 @@ static int needleAtOffset(MMBitmapRef needle, MMBitmapRef haystack,
 			MMRGBHex ncolor = MMRGBHexAtPoint(needle, scan.x, scan.y);
 			MMRGBHex hcolor = MMRGBHexAtPoint(haystack, offset.x + scan.x,
 			                                            offset.y + scan.y);
-			if (!MMRGBHexSimilarToColor(ncolor, hcolor, tolerance)) return 0;
+			if (!MMRGBHexSimilarToColor(ncolor, hcolor, tolerance, ignoreNcolor, hasIgnoreNcolor)) return 0;
 			if (scan.x == 0) break; /* Avoid infinite loop from unsigned type. */
 		}
 		if (scan.y == 0) break;

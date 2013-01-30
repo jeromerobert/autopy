@@ -126,11 +126,13 @@ static PyObject *Bitmap_count_of_color(BitmapObject *self, PyObject *args);
                 position if found, or None if not. */
 static PyObject *Bitmap_find_bitmap(BitmapObject *self, PyObject *args);
 
-/* Syntax: bmp.find_every_bitmap(needle, tolerance=0.0, rect=None) =>
+/* Syntax: bmp.find_every_bitmap(needle, tolerance=0.0, rect=None, ignore_ncolor=-1) =>
                                          list of tuples [(x, y), ...] */
 /* Arguments: |needle| => Bitmap object,
               |tolerance| => float,
               |rect| => ((|x|, |y|), (|width|, |height|)) rect of ints,
+                        or None
+              |ignore_color| => color inside needle to ignore while searching
                         or None */
 /* Description: Returns list of all `(x, y)` coordinates where |needle| occurs
                 in |bmp|. */
@@ -141,6 +143,8 @@ static PyObject *Bitmap_find_every_bitmap(BitmapObject *self, PyObject *args);
 /* Arguments: |needle| => Bitmap object,
               |tolerance| => float,
               |rect| => ((|x|, |y|), (|width|, |height|)) rect of ints,
+                        or None
+              |ignore_color| => color inside needle to ignore while searching
                         or None */
 /* Description: Returns count of occurrences of |needle| in |haystack|.
                 Functionally equivalent to:
@@ -216,19 +220,21 @@ static PyMethodDef Bitmap_methods[] = {
 	{"count_of_color", (PyCFunction)Bitmap_count_of_color, METH_VARARGS,
 	 "bmp.count_of_color(color, tolerance=0.0, rect=None) -> integer\n"
 	 "Returns count of color inside given rect in of bmp.\n"
-	 "If rect is None, entire image is searched."},
+	 "If rect is None, entire image is searched.\n"
+     "If ignore_ncolor is not -1 it will ignore this color in needle."},
 	{"find_bitmap", (PyCFunction)Bitmap_find_bitmap, METH_VARARGS,
-	 "bmp.find_bitmap(needle, tolerance=0.0, rect=None) -> tuple (x, y) "
+	 "bmp.find_bitmap(needle, tolerance=0.0, rect=None, ignore_ncolor=-1) -> tuple (x, y) "
 	                                                       "or None\n"
-	 "Returns tuple of coordinates if needle is found in given rect in bmp, "
+	 "Returns tuple of coordinates if needle is found in given rect in bmp and "
+     "ignoring ignore_ncolor in needle, "
 	 "or None if not."},
 	{"find_every_bitmap", (PyCFunction)Bitmap_find_every_bitmap, METH_VARARGS,
-	 "bmp.find_every_bitmap(needle, tolerance=0.0, rect=None) -> "
+	 "bmp.find_every_bitmap(needle, tolerance=0.0, rect=None, ignore_ncolor=-1) -> "
 	                   "list of tuples [(x, y), ...]\n"
 	 "Returns list of all (x, y) coordinates where needle occurs in given "
-	 "rect inside bmp."},
+	 "rect inside bmp and ignoring ignore_ncolor in needle."},
 	{"count_of_bitmap", (PyCFunction)Bitmap_count_of_bitmap, METH_VARARGS,
-	 "bmp.count_of_bitmap(needle, tolerance=0.0, rect=None) -> integer\n"
+	 "bmp.count_of_bitmap(needle, tolerance=0.0, rect=None, ignore_ncolor=-1) -> integer\n"
 	 "Returns count of occurrences of needle in given rect inside bmp."},
 	{NULL} /* Sentinel */
 };
@@ -588,16 +594,26 @@ static PyObject *Bitmap_find_bitmap(BitmapObject *self, PyObject *args)
 	MMPoint point;
 	PyObject *rectTuple = NULL;
 	MMRect rect;
+    // input can be negative to show if color should be ignored or not (all other possible values are actually used
+    int ignoreNcolor = -1;
+    MMRGBHex ignoreNcolorHex = 0;
+    bool hasIgnoreNcolor = false;
 
-	if (!PyArg_ParseTuple(args, "O!|fO", &Bitmap_Type, &needle,
-	                                     &tolerance, &rectTuple) ||
+	if (!PyArg_ParseTuple(args, "O!|fOi", &Bitmap_Type, &needle,
+	                                     &tolerance, &rectTuple, &ignoreNcolor) ||
 	    !Bitmap_Ready(self) || !Bitmap_Ready(needle) ||
-	    !rectFromTupleOrBitmap(self->bitmap, rectTuple, &rect)) {
+	    !rectFromTupleOrBitmap(self->bitmap, rectTuple, &rect) ||
+        (ignoreNcolor >= 0 && ignoreNcolor<MMRGBHEX_MIN && ignoreNcolor>MMRGBHEX_MAX)) {
 		return NULL;
 	}
 
+    if (ignoreNcolor >= 0) {
+        hasIgnoreNcolor = true;
+        ignoreNcolorHex = (MMRGBHex) ignoreNcolor;
+    }
+
 	if (findBitmapInRect(needle->bitmap, self->bitmap, &point,
-	                     rect, tolerance) == 0) {
+	                     rect, tolerance, ignoreNcolorHex, hasIgnoreNcolor) == 0) {
 		return Py_BuildValue("(kk)", point.x, point.y);
 	}
 
@@ -610,19 +626,29 @@ static PyObject *Bitmap_find_every_bitmap(BitmapObject *self, PyObject *args)
 	float tolerance = 0.0f;
 	PyObject *rectTuple = NULL;
 	MMRect rect;
+    // input can be negative to show if color should be ignored or not (all other possible values are actually used
+    int ignoreNcolor = -1;
+    MMRGBHex ignoreNcolorHex = 0;
+    bool hasIgnoreNcolor = false;
 
 	MMPointArrayRef pointArray;
 	PyObject *list;
 
-	if (!PyArg_ParseTuple(args, "O!|fO", &Bitmap_Type, &needle,
-	                                     &tolerance, &rectTuple) ||
+	if (!PyArg_ParseTuple(args, "O!|fOi", &Bitmap_Type, &needle,
+	                                     &tolerance, &rectTuple, &ignoreNcolor) ||
 	    !Bitmap_Ready(self) || !Bitmap_Ready(needle) ||
-	    !rectFromTupleOrBitmap(self->bitmap, rectTuple, &rect)) {
+	    !rectFromTupleOrBitmap(self->bitmap, rectTuple, &rect) ||
+        (ignoreNcolor >= 0 && ignoreNcolor<MMRGBHEX_MIN && ignoreNcolor>MMRGBHEX_MAX)) {
 		return NULL;
 	}
 
+    if (ignoreNcolor >= 0) {
+        hasIgnoreNcolor = true;
+        ignoreNcolorHex = (MMRGBHex) ignoreNcolor;
+    }
+
 	pointArray = findAllBitmapInRect(needle->bitmap, self->bitmap,
-	                                 rect, tolerance);
+	                                 rect, tolerance, ignoreNcolorHex, hasIgnoreNcolor);
 	if (pointArray == NULL) return NULL;
 
 	list = PyList_FromPointArray(pointArray);
@@ -638,16 +664,26 @@ static PyObject *Bitmap_count_of_bitmap(BitmapObject *self, PyObject *args)
 	float tolerance = 0.0f;
 	PyObject *rectTuple = NULL;
 	MMRect rect;
+    // input can be negative to show if color should be ignored or not (all other possible values are actually used
+    int ignoreNcolor = -1;
+    MMRGBHex ignoreNcolorHex = 0;
+    bool hasIgnoreNcolor = false;
 
-	if (!PyArg_ParseTuple(args, "O!|fO", &Bitmap_Type, &needle,
-	                                     &tolerance, &rectTuple) ||
+	if (!PyArg_ParseTuple(args, "O!|fOi", &Bitmap_Type, &needle,
+	                                     &tolerance, &rectTuple, &ignoreNcolor) ||
 	    !Bitmap_Ready(self) || !Bitmap_Ready(needle) ||
-	    !rectFromTupleOrBitmap(self->bitmap, rectTuple, &rect)) {
+	    !rectFromTupleOrBitmap(self->bitmap, rectTuple, &rect) ||
+        (ignoreNcolor >= 0 && ignoreNcolor<MMRGBHEX_MIN && ignoreNcolor>MMRGBHEX_MAX)) {
 		return NULL;
 	}
 
+    if (ignoreNcolor >= 0) {
+        hasIgnoreNcolor = true;
+        ignoreNcolorHex = (MMRGBHex) ignoreNcolor;
+    }
+
 	return Py_BuildValue("k", countOfBitmapInRect(needle->bitmap, self->bitmap,
-	                                              rect, tolerance));
+	                                              rect, tolerance, ignoreNcolorHex, hasIgnoreNcolor));
 }
 
 static bool rectFromTupleOrBitmap(MMBitmapRef bitmap,

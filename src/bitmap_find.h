@@ -18,7 +18,7 @@
  * colors in the bitmaps need to match, with 0 being exact and 1 being any.
  */
 int findBitmapInRect(MMBitmapRef needle, MMBitmapRef haystack,
-                     MMPoint *point, MMRect rect, float tolerance);
+                     MMPoint *point, MMRect rect, float tolerance, MMRGBHex ignoreNcolor, bool hasIgnoreNcolor);
 
 /* Convenience wrapper around findAllBitmapInRect(), where |rect| is the bounds
  * of |haystack|. */
@@ -37,7 +37,7 @@ int findBitmapInRect(MMBitmapRef needle, MMBitmapRef haystack,
  * given to the caller.
  */
 MMPointArrayRef findAllBitmapInRect(MMBitmapRef needle, MMBitmapRef haystack,
-                                    MMRect rect, float tolerance);
+                                    MMRect rect, float tolerance, MMRGBHex ignoreNcolor, bool hasIgnoreNcolor);
 
 /* Convenience wrapper around countOfBitmapInRect(), where |rect| is the bounds
  * of |haystack|. */
@@ -47,6 +47,6 @@ MMPointArrayRef findAllBitmapInRect(MMBitmapRef needle, MMBitmapRef haystack,
 /* Returns the number of occurences of |needle| in |haystack| inside
  * of |rect|. */
 size_t countOfBitmapInRect(MMBitmapRef needle, MMBitmapRef haystack,
-                           MMRect rect, float tolerance);
+                           MMRect rect, float tolerance, MMRGBHex ignoreNcolor, bool hasIgnoreNcolor);
 
 #endif /* BITMAP_H */

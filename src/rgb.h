@@ -5,6 +5,11 @@
 #include <stdlib.h> /* For abs() */
 #include <math.h>
 #include "inline_keywords.h" /* For H_INLINE */
+#if defined(_MSC_VER)
+	#include "ms_stdbool.h"
+#else
+	#include <stdbool.h>
+#endif
 
 #if defined(_MSC_VER)
 	#include "ms_stdint.h"
@@ -73,8 +78,11 @@ H_INLINE MMRGBColor MMRGBFromHex(MMRGBHex hex)
  * Tolerance can be in the range 0.0f - 1.0f, where 0 denotes the exact
  * color and 1 denotes any color. */
 H_INLINE int MMRGBColorSimilarToColor(MMRGBColor c1, MMRGBColor c2,
-                                      float tolerance)
+                                      float tolerance, MMRGBColor ignoreNcolor, bool hasIgnoreNcolor)
 {
+    if (hasIgnoreNcolor && MMRGBColorEqualToColor(ignoreNcolor, c1)) {
+        return 1;
+    }
 	/* Speedy case */
 	if (tolerance <= 0.0f) {
 		return MMRGBColorEqualToColor(c1, c2);
@@ -90,14 +98,26 @@ H_INLINE int MMRGBColorSimilarToColor(MMRGBColor c1, MMRGBColor c2,
 }
 
 /* Identical to MMRGBColorSimilarToColor, only for hex values. */
-H_INLINE int MMRGBHexSimilarToColor(MMRGBHex h1, MMRGBHex h2, float tolerance)
+H_INLINE int MMRGBHexSimilarToColor(MMRGBHex h1, MMRGBHex h2, float tolerance, MMRGBHex ignoreNcolor, bool hasIgnoreNcolor)
 {
+    if (hasIgnoreNcolor && ignoreNcolor == h1) {
+        return 1;
+    }
 	if (tolerance <= 0.0f) {
 		return h1 == h2;
 	} else {
 		uint8_t d1 = RED_FROM_HEX(h1) - RED_FROM_HEX(h2);
 		uint8_t d2 = GREEN_FROM_HEX(h1) - GREEN_FROM_HEX(h2);
 		uint8_t d3 = BLUE_FROM_HEX(h1) - BLUE_FROM_HEX(h2);
+		if (sqrt((d1 * d1) +
+		            (d2 * d2) +
+		            (d3 * d3)) <= (0.3f * 442.0f))
+        {
+            if (h1!=h2)
+            {
+                //printf("%d %d\n", h1, h2);
+            }
+        }
 		return sqrt((d1 * d1) +
 		            (d2 * d2) +
 		            (d3 * d3)) <= (tolerance * 442.0f);

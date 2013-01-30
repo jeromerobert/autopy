@@ -12,7 +12,7 @@ static int findColorInRectAt(MMBitmapRef image, MMRGBHex color, MMPoint *point,
 	for (; scan.y < rect.size.height; ++scan.y) {
 		for (; scan.x < rect.size.width; ++scan.x) {
 			MMRGBHex found = MMRGBHexAtPoint(image, scan.x, scan.y);
-			if (MMRGBHexSimilarToColor(color, found, tolerance)) {
+			if (MMRGBHexSimilarToColor(color, found, tolerance, 0 , false)) {
 				if (point != NULL) *point = scan;
 				return 0;
 			}
