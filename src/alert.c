@@ -1,6 +1,8 @@
 #include "alert.h"
 #include "os.h"
 #include <assert.h>
+#include <string.h>
+#include <stdio.h>
 
 #if defined(IS_MACOSX)
 	#include <CoreFoundation/CoreFoundation.h>
@@ -10,7 +12,6 @@
 	#include <sys/wait.h> /* For wait() */
 	#include <unistd.h> /* For fork() */
 	#include <sys/types.h> /* For pid_t */
-	#include "snprintf.h" /* For asprintf() */
 #endif
 
 #if defined(USE_X11)
@@ -73,9 +74,11 @@ int showAlert(const char *title, const char *msg, const char *defaultButton,
 	if (defaultButton == NULL) defaultButton = "OK";
 
 	if (cancelButton == NULL) {
-		asprintf(&buttonList, "%s:2", defaultButton);
+		size_t l = strlen(defaultButton) + 2;
+		snprintf(buttonList, l, "%s:2", defaultButton);
 	} else {
-		asprintf(&buttonList, "%s:2,%s:3", defaultButton, cancelButton);
+		size_t l = strlen(defaultButton) + strlen(cancelButton) + 5;
+		snprintf(buttonList, l, "%s:2,%s:3", defaultButton, cancelButton);
 	}
 
 	if (buttonList == NULL) return -1; /* asprintf() failed. */
