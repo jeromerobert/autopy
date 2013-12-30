@@ -1,0 +1,10 @@
+#!/usr/bin/make -f
+
+#export DH_VERBOSE=1
+export PYBUILD_NAME=autopy
+
+%:
+	dh $@ --with python2 --buildsystem=pybuild
+
+get-orig-source:
+	uscan --noconf --force-download --rename --repack --download-current-version --destdir=.

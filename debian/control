@@ -1,0 +1,29 @@
+Source: autopy
+Section: python
+Priority: extra
+Maintainer: Jerome Robert <jeromerobert@gmx.com>
+Build-Depends: debhelper (>= 9),
+               python-all-dev,
+               libxtst-dev,
+               libpng-dev,
+               zlib1g-dev
+Standards-Version: 3.9.5
+Homepage: http://github.com/jeromerobert/autopy
+
+Package: python-autopy
+Architecture: any
+Depends: ${shlibs:Depends}, ${python:Depends}, ${misc:Depends}
+Suggests: python-autopy-doc
+Description: Simple, cross-platform automation toolkit for Python
+ AutoPy is a simple toolkit for automating and scripting repetitive tasks,
+ especially those involving a GUI, with Python. It includes functions for
+ controlling the mouse and keyboard, finding colors and bitmaps on-screen, as
+ well as displaying cross-platform alerts.
+
+Package: python-autopy-doc
+Section: doc
+Architecture: all
+Depends: ${misc:Depends}
+Description: Simple, cross-platform automation toolkit for Python
+ This package contains the API references for autopy.
+
